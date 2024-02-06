@@ -41,9 +41,9 @@ int rsa_verify(struct rsa_ctx * ctx, BIGNUM *S, BIGNUM *H) {
 
 void pkg_pk(struct rsa_ctx * ctx, struct rsa_ctx *Sctx, char * prefix) {
     char *pkfilename[256];
-    char *pknum[4];
+    char *pknum[3];
     char *nnum[3];
-    char *Spknum[4];
+    char *Spknum[3];
     char *Snnum[3];
     FILE *pkfile;
     strcpy(pkfilename, prefix);
@@ -78,7 +78,7 @@ void pkg_pk(struct rsa_ctx * ctx, struct rsa_ctx *Sctx, char * prefix) {
 
 void pkg_sk(struct rsa_ctx * ctx, char * prefix) {
     char *skfilename[256];
-    char *sknum[4];
+    char *sknum[3];
     FILE *tmpfile;
     strcpy(skfilename, prefix);
     strcat(skfilename, ".sk");
@@ -95,8 +95,8 @@ void pkg_sk(struct rsa_ctx * ctx, char * prefix) {
 void pkg_keys(struct rsa_ctx * ctx, char * prefix) {
     char pkfilename[256];
     char skfilename[256];
-    char pknum[4];
-    char sknum[4];
+    char pknum[3];
+    char sknum[3];
     char nnum[3];
     FILE *tmpfile;
     strcpy(pkfilename, prefix);
@@ -130,29 +130,30 @@ void pkg_keys(struct rsa_ctx * ctx, char * prefix) {
 }
 
 int pkg_sk_bytes_count(struct rsa_ctx *ctx, struct rsa_ctx *Sctx) {
-    int sknum = 4;
-    int Ssknum = 4;
+    int sknum = 3;
+    int Ssknum = 3;
     int nnum = 3;
     int nbytes = BN_num_bytes(ctx->n);
     int skbytes = BN_num_bytes(ctx->sk);
     int Snbytes = BN_num_bytes(Sctx->n);
     int Sskbytes = BN_num_bytes(Sctx->sk);
+    printf("skbytes %d\n", skbytes);
     int total = ((nnum * 2) + (nbytes * 2) + sknum + Ssknum + skbytes + Sskbytes);
     return total;
 }
 
 void pkg_sk_bytes(struct rsa_ctx * ctx, struct rsa_ctx *Sctx, unsigned char *keyblob) {
     char *nnum[3];
-    char *sknum[4];
+    char *sknum[3];
     char *Snnum[3];
-    char *Ssknum[4];
-    int nbytes = 768;
+    char *Ssknum[3];
+    int nbytes = BN_num_bytes(ctx->n);
     sprintf(nnum, "%d", nbytes);
-    int skbytes = 1536;
+    int skbytes = BN_num_bytes(ctx->sk);
     sprintf(sknum, "%d", skbytes);
-    int Snbytes = 768;
+    int Snbytes = BN_num_bytes(Sctx->n);
     sprintf(Snnum, "%d", Snbytes);
-    int Sskbytes = 1536;
+    int Sskbytes = BN_num_bytes(Sctx->sk);
     sprintf(Ssknum, "%d", Sskbytes);
     int tt = atoi(sknum);
     unsigned char n[nbytes];
@@ -178,7 +179,7 @@ void pkg_sk_bytes(struct rsa_ctx * ctx, struct rsa_ctx *Sctx, unsigned char *key
         keyblob[pos] = n[i];
         pos += 1;
     }
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 3; i++) {
         keyblob[pos] = _sknum[i];
         pos += 1;
     }
@@ -194,7 +195,7 @@ void pkg_sk_bytes(struct rsa_ctx * ctx, struct rsa_ctx *Sctx, unsigned char *key
         keyblob[pos] = Sn[i];
         pos += 1;
     }
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 3; i++) {
         keyblob[pos] = _Ssknum[i];
         pos += 1;
     }
@@ -282,7 +283,7 @@ void mypad_decrypt(unsigned char * msg, unsigned char * X, int mask_bytes, unsig
     }
 }
 
-int keygen(struct rsa_ctx *ctx, int psize) {
+void keygen(struct rsa_ctx *ctx, int psize) {
     BN_CTX *bnctx = BN_CTX_new();
     BN_CTX_start(bnctx);
     int randstat = 0;
@@ -312,45 +313,47 @@ int keygen(struct rsa_ctx *ctx, int psize) {
     BN_one(z1);
     /* Generate primes */
 
-    while ((good != 0)) {
-        good = 1;
-        while (randstat != 1) {
-            unsigned seed[524288];
-            FILE *randfile;
-            randfile = fopen("/dev/urandom", "rb");
-            fread(seed, 1, 524288, randfile);
-            fclose(randfile);
+    while (randstat != 1) {
+        unsigned seed[524288];
+        FILE *randfile;
+        randfile = fopen("/dev/urandom", "rb");
+        fread(seed, 1, 524288, randfile);
+        fclose(randfile);
 
-            RAND_seed(seed, 524288);
-            randstat = RAND_status();
-        }
+        RAND_seed(seed, 524288);
+        randstat = RAND_status();
+    }
 
-        int p_result = BN_generate_prime_ex2(p, psize, 0, NULL, NULL, NULL, bnctx);
-        int q_result = BN_generate_prime_ex2(q, psize, 0, NULL, NULL, NULL, bnctx);
-        /* Generate the modulus */
-        BN_mul(ctx->n, p, q, bnctx);
-        /* Build the totient */
-        BN_sub(tmp0, p, z1);
-        BN_sub(tmp1, q, z1);
-        BN_mul(t, tmp0, tmp1, bnctx);
-        /* Generate the public key */
+    int p_result = BN_generate_prime_ex2(p, psize, 0, NULL, NULL, NULL, bnctx);
+    int q_result = BN_generate_prime_ex2(q, psize, 0, NULL, NULL, NULL, bnctx);
+    /* Generate the modulus */
+    BN_mul(ctx->n, p, q, bnctx);
+    /* Generate the totient */
+    BN_sub(tmp0, p, z1);
+    BN_sub(tmp1, q, z1);
+    BN_mul(t, tmp0, tmp1, bnctx);
+    /* Generate the public key */
+    BN_rand_range(ctx->pk, t);
+    BN_gcd(tmp0, ctx->pk, t, bnctx);
+    while ((BN_cmp(tmp0, z1) != 0)) {
         BN_rand_range(ctx->pk, t);
         BN_gcd(tmp0, ctx->pk, t, bnctx);
-        while ((BN_cmp(tmp0, z1) != 0)) {
-            BN_rand_range(ctx->pk, t);
-            BN_gcd(tmp0, ctx->pk, t, bnctx);
-        }
-        /* Generate the private key */
-        BN_mod_inverse(ctx->sk, ctx->pk, t, bnctx);
+    }
+    /* Generate the private key */
+    BN_mod_inverse(ctx->sk, ctx->pk, t, bnctx);
 
-        BN_set_word(tmp0, 123);
-        rsa_encrypt(ctx, ctxt, tmp0);
-        rsa_decrypt(ctx, ptxt, ctxt);
+    BN_set_word(tmp0, 123);
+    rsa_encrypt(ctx, ctxt, tmp0);
+    rsa_decrypt(ctx, ptxt, ctxt);
+    rsa_sign(ctx, tmp1, ctxt);
 
-        if (BN_cmp(ptxt, tmp0) == 0) {
-            good = 0;
-        }
-}
+    if ((BN_cmp(ptxt, tmp0) == 0) && (rsa_verify(ctx, tmp1, ctxt) == 0)) {
+        printf("RSA key can encrypt and sign\n");
+    }
+    else {
+        printf("Error: Failed to generate RSA key\n");
+        exit(1);
+    }
 
     BN_free(p);
     BN_free(q);
@@ -360,5 +363,4 @@ int keygen(struct rsa_ctx *ctx, int psize) {
     BN_free(ctxt);
     BN_free(ptxt);
     BN_free(z1);
-    return good;
 }
